@@ -19,6 +19,7 @@ export function AuthProvider({ children }) {
   const [session, setSession] = useState(null)
   const [profile, setProfile] = useState(null)
   const [loading, setLoading] = useState(true)
+  const [recovery, setRecovery] = useState(false) // true while user is resetting password
 
   const refreshProfile = useCallback(async (uid) => {
     if (!uid) return setProfile(null)
@@ -31,7 +32,8 @@ export function AuthProvider({ children }) {
       await refreshProfile(data.session?.user.id)
       setLoading(false)
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      if (event === 'PASSWORD_RECOVERY') setRecovery(true)
       setSession(s)
       setTimeout(() => refreshProfile(s?.user.id), 0)
     })
@@ -43,6 +45,8 @@ export function AuthProvider({ children }) {
     user: session?.user ?? null,
     profile,
     loading,
+    recovery,
+    finishRecovery: () => setRecovery(false),
     refreshProfile: () => refreshProfile(session?.user.id),
     signOut: () => supabase.auth.signOut(),
   }
