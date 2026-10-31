@@ -1,12 +1,24 @@
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
+import { toForm, profileCompleteness } from '../lib/profileSchema'
 
 const DAYS = 7
 
-export default function Dashboard() {
+export default function Dashboard({ onOpenProfile }) {
   const { user, profile, refreshProfile, signOut } = useAuth()
   const [busy, setBusy] = useState(false)
+  const [resumeCount, setResumeCount] = useState(0)
+
+  useEffect(() => {
+    if (!user) return
+    supabase
+      .from('rapidly_resumes')
+      .select('id')
+      .then(({ data }) => setResumeCount(data?.length ?? 0))
+  }, [user])
+
+  const { percent, missing } = profileCompleteness(toForm(profile || {}), resumeCount)
 
   const deletionAt = profile?.deletion_requested_at
     ? new Date(new Date(profile.deletion_requested_at).getTime() + DAYS * 86400000)
@@ -44,6 +56,28 @@ export default function Dashboard() {
       )}
 
       <main className="grid">
+        <div className="card wide">
+          <div className="row spread">
+            <h3>Your profile</h3>
+            <span className="small">{percent}% complete</span>
+          </div>
+          <div
+            className="progress"
+            role="progressbar"
+            aria-label="Profile completeness"
+            aria-valuenow={percent}
+            aria-valuemin={0}
+            aria-valuemax={100}
+          >
+            <span style={{ width: `${percent}%` }} />
+          </div>
+          <p className="muted small">
+            {percent < 100 ? `Next: ${missing.slice(0, 3).join(', ')}.` : 'Your profile is complete.'}
+          </p>
+          <button className="btn primary" onClick={onOpenProfile}>
+            {percent < 100 ? 'Complete your profile' : 'Edit profile'}
+          </button>
+        </div>
         <div className="card"><h3>Matched jobs</h3><p className="muted">Coming in a later step</p></div>
         <div className="card"><h3>Applied</h3><p className="muted">Coming in a later step</p></div>
         <div className="card"><h3>Needs your action</h3><p className="muted">Coming in a later step</p></div>
