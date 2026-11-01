@@ -1,6 +1,8 @@
 // Resume autofill: ask the server to read a resume, clean what comes back, build a review list,
 // and (only after the user ticks items) merge them into the form. Nothing here saves anything.
 import {
+  emptyAward,
+  emptyProject,
   EDU_LEVELS,
   GENDERS,
   MARITAL,
@@ -124,8 +126,32 @@ export function sanitizeParsed(raw) {
 
   const yearsText = str(r.total_experience_years, 6)
   const years = yearsText === '' ? NaN : Number(yearsText)
+  const email = str(r.email, 254).toLowerCase()
+
+  const projects = (Array.isArray(r.projects) ? r.projects : []).slice(0, 15).map((e) => {
+    const current = e?.current === true
+    return {
+      name: str(e?.name, 120),
+      role: str(e?.role, 100),
+      start: dateText(e?.start),
+      end: current ? '' : dateText(e?.end),
+      current,
+      description: longText(e?.description, 1000),
+      tools: str(Array.isArray(e?.tools) ? e.tools.join(', ') : e?.tools, 200),
+      demo_url: url(e?.demo_url),
+      repo_url: url(e?.repo_url),
+    }
+  }).filter((e) => e.name)
+
+  const awards = (Array.isArray(r.awards) ? r.awards : []).slice(0, 20).map((e) => ({
+    title: str(e?.title, 150),
+    issuer: str(e?.issuer, 150),
+    date: dateText(e?.date),
+  })).filter((e) => e.title)
+
   return {
     full_name: str(r.full_name, 100),
+    application_email: /^[^@\s]+@[^@\s]+\.[^@\s]+$/.test(email) ? email : '',
     phone,
     dob,
     gender: pick(r.gender, GENDERS),
@@ -144,6 +170,8 @@ export function sanitizeParsed(raw) {
     current_address: hasAddress ? address : null,
     education,
     experience,
+    projects,
+    awards,
   }
 }
 
@@ -160,6 +188,7 @@ const looseSame = (a, b) => !!low(a) && !!low(b) && (low(a).includes(low(b)) || 
 
 const SCALARS = [
   ['Personal details', 'full_name', 'Full name'],
+  ['Personal details', 'application_email', 'Application email'],
   ['Personal details', 'phone', 'Mobile number'],
   ['Personal details', 'dob', 'Date of birth'],
   ['Personal details', 'gender', 'Gender'],
@@ -240,7 +269,21 @@ export function buildReview(form, parsed) {
     add({ id: `exp${i}`, group: 'Work experience', kind: 'exp', label: 'Job', value: e, show: expText(e), current: '', status: 'new' })
   })
 
-  const order = ['Personal details', 'Address', 'Education', 'Work experience', 'Work & skills']
+  const projText = (e) =>
+    [e.name, e.role, e.start && `${fmtDate(e.start)} – ${e.current ? 'Present' : fmtDate(e.end) || '?'}`, e.tools].filter(Boolean).join(' · ')
+  parsed.projects.forEach((e, i) => {
+    if (form.projects.some((x) => looseSame(x.name, e.name))) return void skipped++
+    add({ id: `proj${i}`, group: 'Projects', kind: 'proj', label: 'Project', value: e, show: projText(e), current: '', status: 'new' })
+  })
+  parsed.awards.forEach((e, i) => {
+    if (form.awards.some((x) => looseSame(x.title, e.title))) return void skipped++
+    add({
+      id: `award${i}`, group: 'Awards & certificates', kind: 'award', label: 'Award',
+      value: e, show: [e.title, e.issuer, fmtDate(e.date)].filter(Boolean).join(' · '), current: '', status: 'new',
+    })
+  })
+
+  const order = ['Personal details', 'Address', 'Education', 'Work experience', 'Projects', 'Awards & certificates', 'Work & skills']
   const groups = order
     .map((g) => ({ title: g, items: items.filter((x) => x.group === g) }))
     .filter((g) => g.items.length)
@@ -269,6 +312,10 @@ export function applyReview(form, groups) {
       next[it.key] = [...next[it.key], ...it.value].slice(0, max)
     } else if (it.kind === 'edu') {
       next.education = [...next.education.filter((x) => x.institution.trim() || x.level), { ...emptyEducation(), ...it.value }]
+    } else if (it.kind === 'proj') {
+      next.projects = [...next.projects, { ...emptyProject(), ...it.value }]
+    } else if (it.kind === 'award') {
+      next.awards = [...next.awards, { ...emptyAward(), ...it.value }]
     } else if (it.kind === 'exp') {
       next.experience = [...next.experience, { ...emptyExperience(), ...it.value }]
       next.is_fresher = false

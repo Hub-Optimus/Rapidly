@@ -19,6 +19,8 @@ import TagInput from '../components/TagInput'
 import AddressFields from '../components/AddressFields'
 import EducationEditor from '../components/EducationEditor'
 import ExperienceEditor from '../components/ExperienceEditor'
+import ProjectsEditor from '../components/ProjectsEditor'
+import AwardsEditor from '../components/AwardsEditor'
 import ResumeManager from '../components/ResumeManager'
 import AutofillReview from '../components/AutofillReview'
 import { FormCtx } from '../lib/formContext'
@@ -31,6 +33,7 @@ const TABS = [
   { id: 'address', label: 'Address' },
   { id: 'education', label: 'Education' },
   { id: 'work', label: 'Work & skills' },
+  { id: 'extras', label: 'Projects & awards' },
   { id: 'prefs', label: 'Job preferences' },
 ]
 const today = () => new Date().toISOString().slice(0, 10)
@@ -315,7 +318,18 @@ export default function Profile({ onBack }) {
                 autoComplete="name"
                 maxLength={100}
               />
-              <TextField label="Email" value={user?.email || ''} readOnly hint="This is your login email." />
+              <TextField label="Login email" value={user?.email || ''} readOnly hint="Used only to log in to Rapidly." />
+              <TextField
+                label="Application email"
+                name="application_email"
+                type="email"
+                value={form.application_email}
+                onChange={set('application_email')}
+                autoComplete="email"
+                maxLength={254}
+                placeholder="The email on your resume"
+                hint="Recruiters reply here, and Rapidly watches this inbox. Leave empty to use your login email."
+              />
               <TextField
                 label="Mobile number"
                 name="phone"
@@ -488,6 +502,17 @@ export default function Profile({ onBack }) {
                 onChange={set('portfolio_url')}
               />
             </div>
+          </>
+        )}
+      </section>
+
+      <section role="tabpanel" id="panel-extras" aria-labelledby="tab-extras" hidden={tab !== 'extras'}>
+        {tab === 'extras' && (
+          <>
+            <h3 className="sect first">Projects</h3>
+            <ProjectsEditor value={form.projects} onChange={set('projects')} />
+            <h3 className="sect">Awards and certificates</h3>
+            <AwardsEditor value={form.awards} onChange={set('awards')} />
           </>
         )}
       </section>

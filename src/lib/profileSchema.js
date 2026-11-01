@@ -72,6 +72,21 @@ export const emptyExperience = () => ({
   description: '',
 })
 
+export const emptyProject = () => ({
+  id: uid(),
+  name: '',
+  role: '',
+  start: '',
+  end: '',
+  current: false,
+  description: '',
+  tools: '',
+  demo_url: '',
+  repo_url: '',
+})
+
+export const emptyAward = () => ({ id: uid(), title: '', issuer: '', date: '' })
+
 const s = (v) => (v == null ? '' : String(v))
 const arr = (v) => (Array.isArray(v) ? v.map(String) : [])
 
@@ -111,11 +126,32 @@ const expFrom = (e) => ({
   description: s(e?.description),
 })
 
+const projFrom = (e) => ({
+  id: (e && e.id) || uid(),
+  name: s(e?.name),
+  role: s(e?.role),
+  start: s(e?.start),
+  end: s(e?.end),
+  current: !!e?.current,
+  description: s(e?.description),
+  tools: s(e?.tools),
+  demo_url: s(e?.demo_url),
+  repo_url: s(e?.repo_url),
+})
+
+const awardFrom = (e) => ({
+  id: (e && e.id) || uid(),
+  title: s(e?.title),
+  issuer: s(e?.issuer),
+  date: s(e?.date),
+})
+
 // database row (or saved payload) -> form state (everything is a string, array or boolean)
 export function toForm(p = {}) {
   return {
     full_name: s(p.full_name),
     phone: s(p.phone),
+    application_email: s(p.application_email),
     dob: s(p.dob),
     gender: s(p.gender),
     nationality: s(p.nationality),
@@ -132,6 +168,8 @@ export function toForm(p = {}) {
     permanent_address: addrFrom(p.permanent_address),
     education: Array.isArray(p.education) ? p.education.map(eduFrom) : [],
     experience: Array.isArray(p.experience) ? p.experience.map(expFrom) : [],
+    projects: Array.isArray(p.projects) ? p.projects.map(projFrom) : [],
+    awards: Array.isArray(p.awards) ? p.awards.map(awardFrom) : [],
     linkedin_url: s(p.linkedin_url),
     github_url: s(p.github_url),
     portfolio_url: s(p.portfolio_url),
@@ -178,6 +216,10 @@ export const urlOk = (v) => {
 const isBlankEdu = (e) =>
   !(e.institution.trim() || e.board_university.trim() || e.field.trim() || e.start || e.end || e.score.trim() || e.backlogs.trim())
 
+const isBlankProj = (e) => !(e.name.trim() || e.role.trim() || e.start || e.end || e.description.trim() || e.tools.trim() || e.demo_url.trim() || e.repo_url.trim())
+const isBlankAward = (e) => !(e.title.trim() || e.issuer.trim() || e.date)
+const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/
+
 const isBlankExp = (e) => !(e.company.trim() || e.title.trim() || e.location.trim() || e.start || e.end || e.description.trim())
 
 // education dates may be a month ("2022-06") or just a year ("2022"): many forms only ask for the year
@@ -188,7 +230,8 @@ const endBeforeStart = (start, end) =>
 export function tabOfKey(key) {
   if (key.startsWith('current_address') || key.startsWith('permanent_address')) return 'address'
   if (key === 'education' || key.startsWith('edu.')) return 'education'
-  if (['full_name', 'phone', 'dob'].includes(key)) return 'personal'
+  if (key.startsWith('proj.') || key.startsWith('award.')) return 'extras'
+  if (['full_name', 'phone', 'dob', 'application_email'].includes(key)) return 'personal'
   if (
     key === 'experience' ||
     key.startsWith('exp.') ||
@@ -216,6 +259,8 @@ export function checkForm(f) {
   else if (!PHONE_RE.test(phone) || phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15) {
     err('phone', 'Not a valid mobile number. Use digits, with an optional + country code.')
   }
+  const ae = f.application_email.trim()
+  if (ae && (!EMAIL_RE.test(ae) || ae.length > 254)) err('application_email', 'That does not look like an email address.')
   if (f.dob) {
     const d = new Date(f.dob)
     const latest = new Date()
@@ -291,6 +336,27 @@ export function checkForm(f) {
     ['portfolio_url', f.portfolio_url],
   ].forEach(([k, v]) => {
     if (v.trim() && !urlOk(normUrl(v))) err(k, 'That does not look like a web address.')
+  })
+  // projects and awards (optional, but wrong values still block Save)
+  f.projects.forEach((x) => {
+    if (isBlankProj(x)) return
+    const k = `proj.${x.id}`
+    if (!x.name.trim()) err(`${k}.name`, 'Enter the project name.')
+    if (x.start && !eduDateOk(x.start)) err(`${k}.start`, 'Pick a valid start date.')
+    if (!x.current) {
+      if (x.end && !eduDateOk(x.end)) err(`${k}.end`, 'Pick a valid end date.')
+      if (x.start && x.end && eduDateOk(x.start) && eduDateOk(x.end) && endBeforeStart(x.start, x.end)) {
+        err(`${k}.end`, 'End date is before the start date.')
+      }
+    }
+    if (x.demo_url.trim() && !urlOk(normUrl(x.demo_url))) err(`${k}.demo_url`, 'That does not look like a web address.')
+    if (x.repo_url.trim() && !urlOk(normUrl(x.repo_url))) err(`${k}.repo_url`, 'That does not look like a web address.')
+  })
+  f.awards.forEach((x) => {
+    if (isBlankAward(x)) return
+    const k = `award.${x.id}`
+    if (!x.title.trim()) err(`${k}.title`, 'Enter the award or certificate name.')
+    if (x.date && !eduDateOk(x.date)) err(`${k}.date`, 'Pick a valid date.')
   })
   if (f.skills.length < 1) need('skills', 'Add at least one skill.')
 
@@ -381,9 +447,28 @@ export function toPayload(f) {
           description: x.description.trim(),
         }))
 
+  const projects = f.projects
+    .filter((x) => !isBlankProj(x))
+    .map((x) => ({
+      id: x.id,
+      name: x.name.trim(),
+      role: x.role.trim(),
+      start: x.start,
+      end: x.current ? '' : x.end,
+      current: !!x.current,
+      description: x.description.trim(),
+      tools: x.tools.trim(),
+      demo_url: normUrl(x.demo_url),
+      repo_url: normUrl(x.repo_url),
+    }))
+  const awards = f.awards
+    .filter((x) => !isBlankAward(x))
+    .map((x) => ({ id: x.id, title: x.title.trim(), issuer: x.issuer.trim(), date: x.date }))
+
   return {
     full_name: f.full_name.trim(),
     phone: t(f.phone),
+    application_email: t(f.application_email.toLowerCase()),
     dob: t(f.dob),
     gender: t(f.gender),
     nationality: t(f.nationality),
@@ -401,6 +486,8 @@ export function toPayload(f) {
     permanent_address: perm,
     education,
     experience,
+    projects,
+    awards,
     linkedin_url: t(normUrl(f.linkedin_url)),
     github_url: t(normUrl(f.github_url)),
     portfolio_url: t(normUrl(f.portfolio_url)),
