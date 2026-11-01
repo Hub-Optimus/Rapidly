@@ -2,7 +2,7 @@ import { useId, useState } from 'react'
 import { useIssue } from '../lib/formContext'
 
 // Chips input: type a value, press Enter or comma to add it. Backspace removes the last one.
-export default function TagInput({ label, name, hint, values, onChange, placeholder, max = 30, required, className = 'span2' }) {
+export default function TagInput({ label, name, hint, values, onChange, placeholder, max = 30, required, className = 'span2', suggestions = [], suggestLabel = 'Suggestions' }) {
   const id = useId()
   const [text, setText] = useState('')
   const { error, need, touch } = useIssue(name)
@@ -34,6 +34,11 @@ export default function TagInput({ label, name, hint, values, onChange, placehol
     }
   }
 
+  const shown = suggestions.filter((x) => x && !values.some((v) => v.toLowerCase() === x.toLowerCase())).slice(0, 10)
+  const pickSuggestion = (x) => {
+    if (values.length < max) onChange([...values, x.slice(0, 60)])
+    touch()
+  }
   const described = [error || need ? `${id}-err` : '', `${id}-hint`].filter(Boolean).join(' ')
 
   return (
@@ -73,6 +78,16 @@ export default function TagInput({ label, name, hint, values, onChange, placehol
           aria-describedby={described}
         />
       </div>
+      {shown.length > 0 && values.length < max && (
+        <div className="suggest" role="group" aria-label={suggestLabel}>
+          <span className="muted small">{suggestLabel}:</span>
+          {shown.map((x) => (
+            <button type="button" key={x} onClick={() => pickSuggestion(x)} aria-label={`Add ${x}`}>
+              + {x}
+            </button>
+          ))}
+        </div>
+      )}
       {error ? (
         <p className="ferr" id={`${id}-err`}>
           <span aria-hidden="true">⚠ </span>

@@ -236,7 +236,7 @@ export function checkForm(f) {
     }
   }
   checkAddr('current_address', f.current_address, true)
-  if (!f.permanent_same_as_current) checkAddr('permanent_address', f.permanent_address, false)
+  if (!f.permanent_same_as_current) checkAddr('permanent_address', f.permanent_address, true)
 
   // education
   let eduOk = 0
@@ -297,6 +297,9 @@ export function checkForm(f) {
   // preferences
   if (f.target_roles.length < 1) need('target_roles', 'Add at least one role Rapidly should search for.')
   if (f.target_locations.length < 1) need('target_locations', 'Add at least one location (or "Remote").')
+  if (!f.notice_period) need('notice_period')
+  if (!f.expected_ctc_lpa.trim()) need('expected_ctc_lpa')
+  if (!f.is_fresher && !f.current_ctc_lpa.trim()) need('current_ctc_lpa')
   ;[
     ['current_ctc_lpa', f.current_ctc_lpa],
     ['expected_ctc_lpa', f.expected_ctc_lpa],

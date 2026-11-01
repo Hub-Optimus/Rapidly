@@ -52,6 +52,7 @@ export default function Profile({ onBack }) {
   const [resumeCount, setResumeCount] = useState(0)
   const [reading, setReading] = useState(false)
   const [review, setReview] = useState(null)
+  const [suggestRoles, setSuggestRoles] = useState(() => (Array.isArray(profile?.ai_suggestions?.roles) ? profile.ai_suggestions.roles.map(String) : []))
   const [focusKey, setFocusKey] = useState(0)
   const focusKeys = useRef(null)
 
@@ -164,6 +165,15 @@ export default function Profile({ onBack }) {
     setReading(true)
     try {
       const parsed = await runAutofill(supabase, item.id)
+      if (parsed.suggested_roles.length) {
+        setSuggestRoles(parsed.suggested_roles)
+        // remember them so they are still there next time (ignored if the 08 SQL has not been run yet)
+        supabase
+          .from('rapidly_profiles')
+          .update({ ai_suggestions: { roles: parsed.suggested_roles, at: new Date().toISOString() } })
+          .eq('id', user.id)
+          .then(() => {}, () => {})
+      }
       const r = buildReview(form, parsed)
       if (r.count === 0) {
         setStatus({ type: 'info', text: 'Rapidly found nothing new in that resume. Your profile already has it, or the resume was hard to read.' })
@@ -199,6 +209,13 @@ export default function Profile({ onBack }) {
     document.getElementById(`tab-${TABS[n].id}`)?.focus()
   }
 
+  const locSuggest = [
+    ...new Map(
+      ['Remote', form.current_address.city, 'Pune', 'Mumbai', 'Bengaluru', 'Hyderabad', 'Delhi NCR', 'Chennai', 'Gurugram', 'Noida', 'Kolkata', 'Ahmedabad']
+        .filter(Boolean)
+        .map((x) => [x.toLowerCase(), x]),
+    ).values(),
+  ]
   const nErr = shownErrors.length
   const nNeed = needKeys.length
   const savedOk = status?.type === 'ok' && !dirty
@@ -370,7 +387,7 @@ export default function Profile({ onBack }) {
             {!form.permanent_same_as_current && (
               <>
                 <h3 className="sect">Permanent address</h3>
-                <AddressFields prefix="permanent_address" value={form.permanent_address} onChange={set('permanent_address')} />
+                <AddressFields prefix="permanent_address" required value={form.permanent_address} onChange={set('permanent_address')} />
               </>
             )}
           </>
@@ -483,6 +500,8 @@ export default function Profile({ onBack }) {
                 label="Target job roles"
                 name="target_roles"
                 required
+                suggestions={suggestRoles}
+                suggestLabel="Suggested from your resume"
                 values={form.target_roles}
                 onChange={set('target_roles')}
                 placeholder="e.g. Full-stack developer, Data analyst"
@@ -493,12 +512,14 @@ export default function Profile({ onBack }) {
                 label="Preferred locations"
                 name="target_locations"
                 required
+                suggestions={locSuggest}
+                suggestLabel="Quick add"
                 values={form.target_locations}
                 onChange={set('target_locations')}
                 placeholder="e.g. Pune, Bengaluru, Remote, Japan"
                 max={15}
               />
-              <SelectField label="Notice period" value={form.notice_period} onChange={set('notice_period')} options={NOTICE_PERIODS} />
+              <SelectField label="Notice period" name="notice_period" required value={form.notice_period} onChange={set('notice_period')} options={NOTICE_PERIODS} />
               <SelectField label="Work mode" allowEmpty={false} value={form.remote_preference} onChange={set('remote_preference')} options={REMOTE} />
               <SelectField label="Open to relocating?" value={form.willing_to_relocate} onChange={set('willing_to_relocate')} options={RELOCATE} />
               <span />
@@ -506,6 +527,7 @@ export default function Profile({ onBack }) {
                 <TextField
                   label="Current CTC (LPA)"
                   name="current_ctc_lpa"
+                  required
                   type="number"
                   min={0}
                   step={0.1}
@@ -518,6 +540,7 @@ export default function Profile({ onBack }) {
               <TextField
                 label="Expected CTC (LPA)"
                 name="expected_ctc_lpa"
+                required
                 type="number"
                 min={0}
                 step={0.1}

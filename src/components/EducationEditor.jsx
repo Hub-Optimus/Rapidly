@@ -23,6 +23,9 @@ export default function EducationEditor({ value, onChange }) {
           Resume tab and Rapidly can fill this in for you.
         </p>
       )}
+      {value.length > 0 && !value.some((e) => SCHOOL.has(e.level)) && (
+        <p className="note">Most Indian job forms also ask for your 10th and 12th. Add them with “+ Add education”.</p>
+      )}
       {needMsg && (
         <p className="fneed" id="edu-need">
           {needMsg}

@@ -12,6 +12,31 @@ import {
   urlOk,
 } from './profileSchema'
 
+// Years of work worked out from the job dates (overlaps counted once). Returns '' if it cannot tell.
+export function yearsFromJobs(jobs, now = new Date()) {
+  const idx = (v, month) => {
+    const m = String(v || '').match(/^(\d{4})(?:-(\d{2}))?$/)
+    return m ? Number(m[1]) * 12 + (m[2] ? Number(m[2]) - 1 : month) : null
+  }
+  const spans = []
+  for (const j of jobs || []) {
+    const a = idx(j.start, 0)
+    const b = j.current ? now.getFullYear() * 12 + now.getMonth() : idx(j.end, 0)
+    if (a !== null && b !== null && b > a) spans.push([a, b])
+  }
+  spans.sort((x, y) => x[0] - y[0])
+  let total = 0
+  let cur = null
+  for (const [a, b] of spans) {
+    if (!cur || a > cur[1]) {
+      if (cur) total += cur[1] - cur[0]
+      cur = [a, b]
+    } else cur[1] = Math.max(cur[1], b)
+  }
+  if (cur) total += cur[1] - cur[0]
+  return total > 0 ? String(Math.round((total / 12) * 10) / 10) : ''
+}
+
 const FUNCTION_NAME = 'rapidly-resume-parse'
 
 // ---------- 1. clean whatever the AI sent (never trust it) ----------
@@ -72,7 +97,8 @@ export function sanitizeParsed(raw) {
     let score = str(e?.score, 30)
     if (def.max) {
       const n = Number(score)
-      score = Number.isFinite(n) && n >= 0 && n <= def.max ? String(n) : ''
+      // an empty score must stay empty (Number('') is 0, which would show a fake "0")
+      score = score !== '' && Number.isFinite(n) && n >= 0 && n <= def.max ? String(n) : ''
     }
     return {
       level: pick(e?.level, EDU_LEVELS) || 'Other',
@@ -96,7 +122,8 @@ export function sanitizeParsed(raw) {
     description: longText(e?.description, 1500),
   })).filter((e) => e.company && e.title)
 
-  const years = Number(r.total_experience_years)
+  const yearsText = str(r.total_experience_years, 6)
+  const years = yearsText === '' ? NaN : Number(yearsText)
   return {
     full_name: str(r.full_name, 100),
     phone,
@@ -109,6 +136,7 @@ export function sanitizeParsed(raw) {
     headline: str(r.headline, 120),
     summary: longText(r.summary, 1000),
     skills: list(r.skills, 50, 60),
+    suggested_roles: list(r.suggested_roles, 8, 60),
     total_experience_years: Number.isFinite(years) && years >= 0 && years <= 60 ? String(years) : '',
     linkedin_url: url(r.linkedin_url),
     github_url: url(r.github_url),
@@ -166,6 +194,17 @@ export function buildReview(form, parsed) {
       id: key, group, kind: 'scalar', key, label, value: v, show: v,
       current: form[key] ? String(form[key]) : '', status: form[key] ? 'conflict' : 'new',
     })
+  }
+
+  // the resume often says "4+ years" only in words, so work it out from the jobs
+  if (!parsed.total_experience_years && !form.total_experience_years && !form.is_fresher) {
+    const y = yearsFromJobs(parsed.experience)
+    if (y) {
+      add({
+        id: 'total_experience_years', group: 'Work & skills', kind: 'scalar', key: 'total_experience_years',
+        label: 'Total experience (years, worked out from your job dates)', value: y, show: `${y} years`, current: '', status: 'new',
+      })
+    }
   }
 
   if (parsed.current_address) {
@@ -256,7 +295,7 @@ export async function friendlyAutofillError(error) {
 }
 
 export async function runAutofill(supabase, resumeId) {
-  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 75000))
+  const timeout = new Promise((_, rej) => setTimeout(() => rej(new Error('timeout')), 125000))
   let res
   try {
     res = await Promise.race([supabase.functions.invoke(FUNCTION_NAME, { body: { resume_id: resumeId } }), timeout])
