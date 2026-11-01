@@ -1,11 +1,13 @@
 import { EDU_LEVELS, SCORE_TYPES, emptyEducation } from '../lib/profileSchema'
 import { TextField, SelectField } from './Field'
 import MonthInput from './MonthInput'
+import { useIssue } from '../lib/formContext'
 
 const SCHOOL = new Set(['10th (SSC)', '12th (HSC)'])
 const WITH_BACKLOGS = new Set(['Diploma', "Bachelor's degree", "Master's degree"])
 
 export default function EducationEditor({ value, onChange }) {
+  const { need: needMsg } = useIssue('education')
   const update = (id, patch) => onChange(value.map((e) => (e.id === id ? { ...e, ...patch } : e)))
   const remove = (id) => onChange(value.filter((e) => e.id !== id))
   const add = () => {
@@ -16,7 +18,15 @@ export default function EducationEditor({ value, onChange }) {
   return (
     <div>
       {value.length === 0 && (
-        <p className="note">Add your 10th, 12th, diploma and degrees. Job forms often ask for each one.</p>
+        <p className="note">
+          Add your 10th, 12th, diploma and degrees. Job forms often ask for each one. Tip: upload your resume on the
+          Resume tab and Rapidly can fill this in for you.
+        </p>
+      )}
+      {needMsg && (
+        <p className="fneed" id="edu-need">
+          {needMsg}
+        </p>
       )}
 
       {value.map((e, i) => {
@@ -36,6 +46,7 @@ export default function EducationEditor({ value, onChange }) {
             <div className="fgrid">
               <SelectField
                 label="Level"
+                name={`edu.${e.id}.level`}
                 required
                 value={e.level}
                 onChange={(v) => update(e.id, { level: v })}
@@ -43,6 +54,7 @@ export default function EducationEditor({ value, onChange }) {
               />
               <TextField
                 label={school ? 'School' : 'College / institute'}
+                name={`edu.${e.id}.institution`}
                 required
                 value={e.institution}
                 onChange={(v) => update(e.id, { institution: v })}
@@ -61,8 +73,8 @@ export default function EducationEditor({ value, onChange }) {
                 placeholder={school ? 'e.g. Science, Commerce' : 'e.g. Computer Engineering'}
                 maxLength={100}
               />
-              <MonthInput label="Start date" value={e.start} onChange={(v) => update(e.id, { start: v })} />
-              <MonthInput label="End date (or expected)" value={e.end} onChange={(v) => update(e.id, { end: v })} />
+              <MonthInput label="Start date" name={`edu.${e.id}.start`} value={e.start} onChange={(v) => update(e.id, { start: v })} />
+              <MonthInput label="End date (or expected)" name={`edu.${e.id}.end`} value={e.end} onChange={(v) => update(e.id, { end: v })} />
               <SelectField
                 label="Score type"
                 allowEmpty={false}
@@ -72,6 +84,7 @@ export default function EducationEditor({ value, onChange }) {
               />
               <TextField
                 label="Score"
+                name={`edu.${e.id}.score`}
                 value={e.score}
                 onChange={(v) => update(e.id, { score: v })}
                 type={st.max ? 'number' : 'text'}
@@ -84,6 +97,7 @@ export default function EducationEditor({ value, onChange }) {
               {WITH_BACKLOGS.has(e.level) && (
                 <TextField
                   label="Active backlogs (optional)"
+                  name={`edu.${e.id}.backlogs`}
                   type="number"
                   min={0}
                   step={1}

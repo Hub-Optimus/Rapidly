@@ -4,7 +4,8 @@ import { useAuth } from '../context/AuthContext'
 import {
   toForm,
   toPayload,
-  validate,
+  checkForm,
+  tabOfKey,
   profileCompleteness,
   GENDERS,
   MARITAL,
@@ -19,16 +20,19 @@ import AddressFields from '../components/AddressFields'
 import EducationEditor from '../components/EducationEditor'
 import ExperienceEditor from '../components/ExperienceEditor'
 import ResumeManager from '../components/ResumeManager'
+import AutofillReview from '../components/AutofillReview'
+import { FormCtx } from '../lib/formContext'
+import { runAutofill, buildReview, applyReview } from '../lib/autofill'
 
+// Resume is first on purpose: upload it, press "Fill my profile", then just review the other tabs.
 const TABS = [
+  { id: 'resumes', label: 'Resume' },
   { id: 'personal', label: 'Personal' },
   { id: 'address', label: 'Address' },
   { id: 'education', label: 'Education' },
   { id: 'work', label: 'Work & skills' },
   { id: 'prefs', label: 'Job preferences' },
-  { id: 'resumes', label: 'Resumes' },
 ]
-const NO_ERRORS = { personal: [], address: [], education: [], work: [], prefs: [] }
 const today = () => new Date().toISOString().slice(0, 10)
 
 export default function Profile({ onBack }) {
@@ -39,16 +43,37 @@ export default function Profile({ onBack }) {
   const [form, setForm] = useState(first.current)
   const baseline = useRef(JSON.stringify(first.current))
 
-  const [tab, setTab] = useState('personal')
-  const [showErrors, setShowErrors] = useState(false)
+  // brand-new profiles start on the Resume tab
+  const [tab, setTab] = useState(first.current.education.length === 0 && first.current.skills.length === 0 ? 'resumes' : 'personal')
+  const [touched, setTouched] = useState(() => new Set())
+  const [submitted, setSubmitted] = useState(false)
   const [saving, setSaving] = useState(false)
-  const [status, setStatus] = useState(null) // { type: 'ok' | 'error', text }
+  const [status, setStatus] = useState(null) // { type: 'ok' | 'info' | 'error', text }
   const [resumeCount, setResumeCount] = useState(0)
+  const [reading, setReading] = useState(false)
+  const [review, setReview] = useState(null)
+  const [focusKey, setFocusKey] = useState(0)
+  const focusKeys = useRef(null)
 
   const set = (k) => (v) => setForm((f) => ({ ...f, [k]: v }))
   const dirty = JSON.stringify(form) !== baseline.current
-  const errors = useMemo(() => (showErrors ? validate(form) : NO_ERRORS), [form, showErrors])
+  const { errors, needs } = useMemo(() => checkForm(form), [form])
   const { percent, missing } = useMemo(() => profileCompleteness(form, resumeCount), [form, resumeCount])
+
+  const ctx = useMemo(
+    () => ({
+      errors,
+      needs,
+      touched,
+      submitted,
+      touch: (k) => setTouched((t) => (t.has(k) ? t : new Set(t).add(k))),
+    }),
+    [errors, needs, touched, submitted],
+  )
+  // errors the user can already see (field visited, or Save clicked)
+  const shownErrors = Object.keys(errors).filter((k) => submitted || touched.has(k))
+  const needKeys = Object.keys(needs)
+  const tabHas = (id, keys) => keys.some((k) => tabOfKey(k) === id)
 
   // warn before closing the tab with unsaved changes
   useEffect(() => {
@@ -74,21 +99,41 @@ export default function Profile({ onBack }) {
   function discard() {
     if (!window.confirm('Discard all unsaved changes?')) return
     setForm(JSON.parse(baseline.current))
-    setShowErrors(false)
+    setTouched(new Set())
+    setSubmitted(false)
     setStatus(null)
   }
 
+  // jump to the first tab (in tab order) that has one of these problem keys, and focus its first field
+  function goToFirst(keys) {
+    const bad = TABS.find((t) => tabHas(t.id, keys))
+    if (!bad) return
+    focusKeys.current = new Set(keys)
+    setTab(bad.id)
+    setFocusKey((n) => n + 1)
+  }
+  useEffect(() => {
+    if (!focusKeys.current) return
+    const keys = focusKeys.current
+    focusKeys.current = null
+    const id = requestAnimationFrame(() => {
+      const el = [...document.querySelectorAll('.form [data-field]')].find((x) => keys.has(x.getAttribute('data-field')))
+      if (el) {
+        el.scrollIntoView({ block: 'center', behavior: 'smooth' })
+        el.focus({ preventScroll: true })
+      } else window.scrollTo({ top: 0, behavior: 'smooth' })
+    })
+    return () => cancelAnimationFrame(id)
+  }, [focusKey])
+
   async function save() {
     setStatus(null)
-    const errs = validate(form)
-    const bad = TABS.find((t) => errs[t.id]?.length)
-    if (bad) {
-      setShowErrors(true)
-      setTab(bad.id)
-      setStatus({ type: 'error', text: 'Please fix the issues listed, then save again.' })
+    setSubmitted(true)
+    const errKeys = Object.keys(errors)
+    if (errKeys.length) {
+      goToFirst(errKeys)
       return
     }
-    setShowErrors(false)
     setSaving(true)
     const payload = toPayload(form)
     const { error } = await supabase
@@ -113,6 +158,34 @@ export default function Profile({ onBack }) {
     refreshProfile()
   }
 
+  // ----- resume autofill -----
+  async function startAutofill(item) {
+    setStatus(null)
+    setReading(true)
+    try {
+      const parsed = await runAutofill(supabase, item.id)
+      const r = buildReview(form, parsed)
+      if (r.count === 0) {
+        setStatus({ type: 'info', text: 'Rapidly found nothing new in that resume. Your profile already has it, or the resume was hard to read.' })
+      } else setReview(r)
+    } catch (e) {
+      setStatus({ type: 'error', text: e.message })
+    } finally {
+      setReading(false)
+    }
+  }
+  function applyAutofill(groups) {
+    const { form: next, filled } = applyReview(form, groups)
+    setForm(next)
+    setReview(null)
+    setTab('personal')
+    window.scrollTo({ top: 0, behavior: 'smooth' })
+    setStatus({
+      type: 'info',
+      text: `Added ${filled} ${filled === 1 ? 'item' : 'items'} from your resume. Check each tab, then press Save changes.`,
+    })
+  }
+
   function onTabKey(e) {
     const i = TABS.findIndex((t) => t.id === tab)
     let n = null
@@ -126,20 +199,38 @@ export default function Profile({ onBack }) {
     document.getElementById(`tab-${TABS[n].id}`)?.focus()
   }
 
-  const errList = (id) =>
-    errors[id]?.length ? (
-      <div className="msg error" role="alert">
-        <ul>
-          {errors[id].map((m, i) => (
-            <li key={i}>{m}</li>
-          ))}
-        </ul>
-      </div>
-    ) : null
+  const nErr = shownErrors.length
+  const nNeed = needKeys.length
+  const savedOk = status?.type === 'ok' && !dirty
 
-  const saveLabel = saving ? 'Saving…' : dirty ? 'Unsaved changes' : status?.type === 'ok' ? 'All changes saved' : ''
+  let left
+  if (saving) left = <span className="muted">Saving…</span>
+  else if (nErr > 0) {
+    left = (
+      <span className="err-text">
+        {nErr} {nErr === 1 ? 'field needs' : 'fields need'} fixing before you can save.{' '}
+        <button type="button" className="linkbtn" onClick={() => goToFirst(shownErrors)}>
+          Show me
+        </button>
+      </span>
+    )
+  } else if (status?.type === 'error') left = <span className="err-text">{status.text}</span>
+  else if (status?.type === 'info') left = <span className="muted">{status.text}</span>
+  else if (dirty) left = <span className="muted">Unsaved changes</span>
+  else if (savedOk && nNeed > 0) {
+    left = (
+      <span className="warn-text">
+        Saved. {nNeed} required {nNeed === 1 ? 'item is' : 'items are'} still empty.{' '}
+        <button type="button" className="linkbtn" onClick={() => goToFirst(needKeys)}>
+          Show me
+        </button>
+      </span>
+    )
+  } else if (savedOk) left = <span className="muted">All changes saved</span>
+  else left = <span className="muted" />
 
   return (
+    <FormCtx.Provider value={ctx}>
     <div className="page form">
       <div className="phead">
         <button type="button" className="btn" onClick={goBack}>
@@ -170,6 +261,10 @@ export default function Profile({ onBack }) {
         asks for them. Government ID numbers, bank details and documents are not collected on this page.
       </p>
 
+      <p className="legend">
+        <span className="req">*</span> Needed before Rapidly can apply for you. You can save now and finish later.
+      </p>
+
       <div className="tabs" role="tablist" aria-label="Profile sections" onKeyDown={onTabKey}>
         {TABS.map((t) => (
           <button
@@ -184,7 +279,8 @@ export default function Profile({ onBack }) {
             onClick={() => setTab(t.id)}
           >
             {t.label}
-            {errors[t.id]?.length > 0 && <span className="dot" aria-label="has errors" />}
+            {tabHas(t.id, shownErrors) && <span className="dot" aria-label="has errors" />}
+            {!tabHas(t.id, shownErrors) && submitted && tabHas(t.id, needKeys) && <span className="dot warn" aria-label="has empty required fields" />}
           </button>
         ))}
       </div>
@@ -192,10 +288,10 @@ export default function Profile({ onBack }) {
       <section role="tabpanel" id="panel-personal" aria-labelledby="tab-personal" hidden={tab !== 'personal'}>
         {tab === 'personal' && (
           <>
-            {errList('personal')}
             <div className="fgrid">
               <TextField
                 label="Full name"
+                name="full_name"
                 required
                 value={form.full_name}
                 onChange={set('full_name')}
@@ -205,6 +301,8 @@ export default function Profile({ onBack }) {
               <TextField label="Email" value={user?.email || ''} readOnly hint="This is your login email." />
               <TextField
                 label="Mobile number"
+                name="phone"
+                required
                 type="tel"
                 value={form.phone}
                 onChange={set('phone')}
@@ -215,6 +313,7 @@ export default function Profile({ onBack }) {
               />
               <TextField
                 label="Date of birth"
+                name="dob"
                 type="date"
                 value={form.dob}
                 onChange={set('dob')}
@@ -258,9 +357,8 @@ export default function Profile({ onBack }) {
       <section role="tabpanel" id="panel-address" aria-labelledby="tab-address" hidden={tab !== 'address'}>
         {tab === 'address' && (
           <>
-            {errList('address')}
             <h3 className="sect">Current address</h3>
-            <AddressFields value={form.current_address} onChange={set('current_address')} autofill />
+            <AddressFields prefix="current_address" required value={form.current_address} onChange={set('current_address')} autofill />
             <label className="check">
               <input
                 type="checkbox"
@@ -272,7 +370,7 @@ export default function Profile({ onBack }) {
             {!form.permanent_same_as_current && (
               <>
                 <h3 className="sect">Permanent address</h3>
-                <AddressFields value={form.permanent_address} onChange={set('permanent_address')} />
+                <AddressFields prefix="permanent_address" value={form.permanent_address} onChange={set('permanent_address')} />
               </>
             )}
           </>
@@ -282,7 +380,6 @@ export default function Profile({ onBack }) {
       <section role="tabpanel" id="panel-education" aria-labelledby="tab-education" hidden={tab !== 'education'}>
         {tab === 'education' && (
           <>
-            {errList('education')}
             <EducationEditor value={form.education} onChange={set('education')} />
           </>
         )}
@@ -291,7 +388,6 @@ export default function Profile({ onBack }) {
       <section role="tabpanel" id="panel-work" aria-labelledby="tab-work" hidden={tab !== 'work'}>
         {tab === 'work' && (
           <>
-            {errList('work')}
             <label className="check">
               <input type="checkbox" checked={form.is_fresher} onChange={(e) => set('is_fresher')(e.target.checked)} />
               I am a fresher (no work experience yet)
@@ -303,6 +399,7 @@ export default function Profile({ onBack }) {
               {!form.is_fresher && (
                 <TextField
                   label="Total experience (years)"
+                  name="total_experience_years"
                   type="number"
                   min={0}
                   max={60}
@@ -331,6 +428,8 @@ export default function Profile({ onBack }) {
               />
               <TagInput
                 label="Skills"
+                name="skills"
+                required
                 values={form.skills}
                 onChange={set('skills')}
                 placeholder="e.g. React, Python, SQL"
@@ -346,6 +445,7 @@ export default function Profile({ onBack }) {
               />
               <TextField
                 label="LinkedIn (optional)"
+                name="linkedin_url"
                 type="url"
                 inputMode="url"
                 value={form.linkedin_url}
@@ -354,6 +454,7 @@ export default function Profile({ onBack }) {
               />
               <TextField
                 label="GitHub (optional)"
+                name="github_url"
                 type="url"
                 inputMode="url"
                 value={form.github_url}
@@ -363,6 +464,7 @@ export default function Profile({ onBack }) {
               <TextField
                 className="span2"
                 label="Portfolio or website (optional)"
+                name="portfolio_url"
                 type="url"
                 inputMode="url"
                 value={form.portfolio_url}
@@ -376,10 +478,11 @@ export default function Profile({ onBack }) {
       <section role="tabpanel" id="panel-prefs" aria-labelledby="tab-prefs" hidden={tab !== 'prefs'}>
         {tab === 'prefs' && (
           <>
-            {errList('prefs')}
             <div className="fgrid">
               <TagInput
                 label="Target job roles"
+                name="target_roles"
+                required
                 values={form.target_roles}
                 onChange={set('target_roles')}
                 placeholder="e.g. Full-stack developer, Data analyst"
@@ -388,6 +491,8 @@ export default function Profile({ onBack }) {
               />
               <TagInput
                 label="Preferred locations"
+                name="target_locations"
+                required
                 values={form.target_locations}
                 onChange={set('target_locations')}
                 placeholder="e.g. Pune, Bengaluru, Remote, Japan"
@@ -400,6 +505,7 @@ export default function Profile({ onBack }) {
               {!form.is_fresher && (
                 <TextField
                   label="Current CTC (LPA)"
+                  name="current_ctc_lpa"
                   type="number"
                   min={0}
                   step={0.1}
@@ -411,6 +517,7 @@ export default function Profile({ onBack }) {
               )}
               <TextField
                 label="Expected CTC (LPA)"
+                name="expected_ctc_lpa"
                 type="number"
                 min={0}
                 step={0.1}
@@ -463,12 +570,12 @@ export default function Profile({ onBack }) {
       </section>
 
       <section role="tabpanel" id="panel-resumes" aria-labelledby="tab-resumes" hidden={tab !== 'resumes'}>
-        <ResumeManager onCount={setResumeCount} />
+        <ResumeManager onCount={setResumeCount} onAutofill={startAutofill} autofillBusy={reading} />
       </section>
 
       <div className="savebar">
-        <div aria-live="polite" className="small">
-          {status?.type === 'error' ? <span className="err-text">{status.text}</span> : <span className="muted">{saveLabel}</span>}
+        <div aria-live="polite" className="small savemsg">
+          {left}
         </div>
         <div className="row">
           {dirty && (
@@ -482,5 +589,16 @@ export default function Profile({ onBack }) {
         </div>
       </div>
     </div>
+    {reading && (
+      <div className="overlay" role="alertdialog" aria-live="assertive" aria-label="Reading your resume">
+        <div className="modal reading">
+          <div className="spinner" aria-hidden="true" />
+          <p>Reading your resume…</p>
+          <p className="muted small">This takes about 10 to 20 seconds. Please keep this page open.</p>
+        </div>
+      </div>
+    )}
+    {review && <AutofillReview review={review} onApply={applyAutofill} onCancel={() => setReview(null)} />}
+    </FormCtx.Provider>
   )
 }

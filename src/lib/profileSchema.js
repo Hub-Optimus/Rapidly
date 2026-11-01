@@ -150,8 +150,14 @@ export function toForm(p = {}) {
 }
 
 // ---------- validation ----------
+// checkForm() returns two maps keyed by field name:
+//   errors: something is wrong (blocks Save)           e.g. { phone: 'Not a valid ...' }
+//   needs:  a required field is still empty (does not block Save, blocks applying)
+// Keys: full_name, phone, dob, current_address.city, permanent_address.pincode, edu.<id>.institution,
+//       exp.<id>.title, skills, target_roles, linkedin_url, ... (see tabOfKey for the tab each belongs to)
 const PHONE_RE = /^\+?[0-9][0-9\s-]{6,17}$/
 const MONTH_RE = /^\d{4}-(0[1-9]|1[0-2])$/
+const YEAR_RE = /^\d{4}$/
 const PIN_RE = /^[1-9][0-9]{5}$/
 
 export const normUrl = (v) => {
@@ -160,7 +166,7 @@ export const normUrl = (v) => {
   return /^https?:\/\//i.test(x) ? x : `https://${x}`
 }
 
-const urlOk = (v) => {
+export const urlOk = (v) => {
   try {
     const u = new URL(v)
     return (u.protocol === 'http:' || u.protocol === 'https:') && u.hostname.includes('.')
@@ -174,87 +180,136 @@ const isBlankEdu = (e) =>
 
 const isBlankExp = (e) => !(e.company.trim() || e.title.trim() || e.location.trim() || e.start || e.end || e.description.trim())
 
-// returns { personal: [...messages], address: [...], education: [...], work: [...], prefs: [...] }
-export function validate(f) {
-  const e = { personal: [], address: [], education: [], work: [], prefs: [] }
+// education dates may be a month ("2022-06") or just a year ("2022"): many forms only ask for the year
+const eduDateOk = (v) => (MONTH_RE.test(v) || YEAR_RE.test(v)) && Number(v.slice(0, 4)) >= 1950 && Number(v.slice(0, 4)) <= new Date().getFullYear() + 8
+const endBeforeStart = (start, end) =>
+  MONTH_RE.test(start) && MONTH_RE.test(end) ? end < start : Number(end.slice(0, 4)) < Number(start.slice(0, 4))
 
-  if (!f.full_name.trim()) e.personal.push('Full name is required.')
-  if (f.phone.trim() && !PHONE_RE.test(f.phone.trim())) {
-    e.personal.push('Mobile number looks wrong. Use digits, with an optional + country code.')
+export function tabOfKey(key) {
+  if (key.startsWith('current_address') || key.startsWith('permanent_address')) return 'address'
+  if (key === 'education' || key.startsWith('edu.')) return 'education'
+  if (['full_name', 'phone', 'dob'].includes(key)) return 'personal'
+  if (
+    key === 'experience' ||
+    key.startsWith('exp.') ||
+    ['total_experience_years', 'linkedin_url', 'github_url', 'portfolio_url', 'skills', 'summary'].includes(key)
+  ) {
+    return 'work'
+  }
+  return 'prefs'
+}
+
+export function checkForm(f) {
+  const errors = {}
+  const needs = {}
+  const err = (k, m) => {
+    if (!errors[k]) errors[k] = m
+  }
+  const need = (k, m = 'Needed to apply') => {
+    needs[k] = m
+  }
+
+  // personal
+  if (!f.full_name.trim()) err('full_name', 'Enter your full name.')
+  const phone = f.phone.trim()
+  if (!phone) need('phone')
+  else if (!PHONE_RE.test(phone) || phone.replace(/\D/g, '').length < 7 || phone.replace(/\D/g, '').length > 15) {
+    err('phone', 'Not a valid mobile number. Use digits, with an optional + country code.')
   }
   if (f.dob) {
     const d = new Date(f.dob)
     const latest = new Date()
     latest.setFullYear(latest.getFullYear() - 14)
-    if (Number.isNaN(d.getTime()) || d > latest || d < new Date('1940-01-01')) {
-      e.personal.push('Date of birth looks wrong.')
-    }
+    if (Number.isNaN(d.getTime()) || d > latest || d < new Date('1940-01-01')) err('dob', 'Date of birth looks wrong.')
   }
 
-  const checkAddr = (label, a) => {
+  // addresses
+  const checkAddr = (key, a, required) => {
+    if (required) {
+      if (!a.line1.trim()) need(`${key}.line1`)
+      if (!a.city.trim()) need(`${key}.city`)
+      if (!a.state.trim()) need(`${key}.state`)
+      if (!a.pincode.trim()) need(`${key}.pincode`)
+    }
     if (a.country.trim().toLowerCase() === 'india' && a.pincode.trim() && !PIN_RE.test(a.pincode.trim())) {
-      e.address.push(`${label}: PIN code must be 6 digits.`)
+      err(`${key}.pincode`, 'PIN code must be 6 digits.')
     }
   }
-  checkAddr('Current address', f.current_address)
-  if (!f.permanent_same_as_current) checkAddr('Permanent address', f.permanent_address)
+  checkAddr('current_address', f.current_address, true)
+  if (!f.permanent_same_as_current) checkAddr('permanent_address', f.permanent_address, false)
 
-  f.education.forEach((x, i) => {
+  // education
+  let eduOk = 0
+  f.education.forEach((x) => {
     if (isBlankEdu(x)) return
-    const n = `Education ${i + 1}`
-    if (!x.level) e.education.push(`${n}: choose the level.`)
-    if (!x.institution.trim()) e.education.push(`${n}: school or college name is required.`)
-    if (x.start && !MONTH_RE.test(x.start)) e.education.push(`${n}: pick both month and year for the start date.`)
-    if (x.end && !MONTH_RE.test(x.end)) e.education.push(`${n}: pick both month and year for the end date.`)
-    if (MONTH_RE.test(x.start) && MONTH_RE.test(x.end) && x.end < x.start) {
-      e.education.push(`${n}: end date is before the start date.`)
+    const k = `edu.${x.id}`
+    if (!x.level) err(`${k}.level`, 'Choose the level.')
+    if (!x.institution.trim()) err(`${k}.institution`, 'Enter the school or college name.')
+    if (x.level && x.institution.trim()) eduOk++
+    if (x.start && !eduDateOk(x.start)) err(`${k}.start`, 'Pick a valid start year.')
+    if (x.end && !eduDateOk(x.end)) err(`${k}.end`, 'Pick a valid end year.')
+    if (x.start && x.end && eduDateOk(x.start) && eduDateOk(x.end) && endBeforeStart(x.start, x.end)) {
+      err(`${k}.end`, 'End date is before the start date.')
     }
     const st = SCORE_TYPES.find((t) => t.id === x.score_type) || SCORE_TYPES[0]
     if (x.score.trim() && st.max) {
       const v = Number(x.score)
-      if (!Number.isFinite(v) || v < 0 || v > st.max) e.education.push(`${n}: ${st.label} must be between 0 and ${st.max}.`)
+      if (!Number.isFinite(v) || v < 0 || v > st.max) err(`${k}.score`, `${st.label} must be between 0 and ${st.max}.`)
     }
-    if (x.backlogs.trim() && !/^\d{1,2}$/.test(x.backlogs.trim())) e.education.push(`${n}: backlogs must be a whole number.`)
+    if (x.backlogs.trim() && !/^\d{1,2}$/.test(x.backlogs.trim())) err(`${k}.backlogs`, 'Enter a whole number.')
   })
+  if (eduOk === 0) need('education', 'Add at least one education entry (level and school or college).')
 
-  if (!f.is_fresher) {
-    f.experience.forEach((x, i) => {
+  // work
+  if (f.is_fresher) {
+    // nothing to check
+  } else {
+    let jobs = 0
+    f.experience.forEach((x) => {
       if (isBlankExp(x)) return
-      const n = `Job ${i + 1}`
-      if (!x.title.trim()) e.work.push(`${n}: job title is required.`)
-      if (!x.company.trim()) e.work.push(`${n}: company name is required.`)
-      if (!MONTH_RE.test(x.start)) e.work.push(`${n}: pick both month and year for the start date.`)
+      const k = `exp.${x.id}`
+      if (!x.title.trim()) err(`${k}.title`, 'Enter the job title.')
+      if (!x.company.trim()) err(`${k}.company`, 'Enter the company name.')
+      if (x.title.trim() && x.company.trim()) jobs++
+      if (!x.start) err(`${k}.start`, 'Pick the start month and year.')
+      else if (!MONTH_RE.test(x.start)) err(`${k}.start`, 'Pick the month as well as the year.')
       if (!x.current) {
-        if (!MONTH_RE.test(x.end)) e.work.push(`${n}: pick the end date, or tick "I currently work here".`)
-        else if (MONTH_RE.test(x.start) && x.end < x.start) e.work.push(`${n}: end date is before the start date.`)
+        if (!x.end) err(`${k}.end`, 'Pick the end date, or tick "I currently work here".')
+        else if (!MONTH_RE.test(x.end)) err(`${k}.end`, 'Pick the month as well as the year.')
+        else if (MONTH_RE.test(x.start) && x.end < x.start) err(`${k}.end`, 'End date is before the start date.')
       }
     })
+    if (jobs === 0) need('experience', 'Add a job, or tick "I am a fresher".')
     if (f.total_experience_years.trim()) {
       const v = Number(f.total_experience_years)
-      if (!Number.isFinite(v) || v < 0 || v > 60) e.work.push('Total experience must be between 0 and 60 years.')
+      if (!Number.isFinite(v) || v < 0 || v > 60) err('total_experience_years', 'Enter a number between 0 and 60.')
     }
   }
   ;[
-    ['LinkedIn', f.linkedin_url],
-    ['GitHub', f.github_url],
-    ['Portfolio', f.portfolio_url],
-  ].forEach(([name, v]) => {
-    if (v.trim() && !urlOk(normUrl(v))) e.work.push(`${name} link does not look like a web address.`)
+    ['linkedin_url', f.linkedin_url],
+    ['github_url', f.github_url],
+    ['portfolio_url', f.portfolio_url],
+  ].forEach(([k, v]) => {
+    if (v.trim() && !urlOk(normUrl(v))) err(k, 'That does not look like a web address.')
   })
+  if (f.skills.length < 1) need('skills', 'Add at least one skill.')
 
+  // preferences
+  if (f.target_roles.length < 1) need('target_roles', 'Add at least one role Rapidly should search for.')
+  if (f.target_locations.length < 1) need('target_locations', 'Add at least one location (or "Remote").')
   ;[
-    ['Current CTC', f.current_ctc_lpa],
-    ['Expected CTC', f.expected_ctc_lpa],
-  ].forEach(([name, v]) => {
+    ['current_ctc_lpa', f.current_ctc_lpa],
+    ['expected_ctc_lpa', f.expected_ctc_lpa],
+  ].forEach(([k, v]) => {
     if (v.trim()) {
       const n = Number(v)
-      if (!Number.isFinite(n) || n < 0 || n > 1000) e.prefs.push(`${name} must be a number between 0 and 1000 (in LPA).`)
+      if (!Number.isFinite(n) || n < 0 || n > 1000) err(k, 'Enter a number between 0 and 1000 (lakhs per year).')
     }
   })
   if (!Number.isInteger(f.min_match_score) || f.min_match_score < 0 || f.min_match_score > 100) {
-    e.prefs.push('Minimum match score must be between 0 and 100.')
+    err('min_match_score', 'Must be between 0 and 100.')
   }
-  return e
+  return { errors, needs }
 }
 
 // ---------- form -> database ----------

@@ -1,14 +1,21 @@
 import { emptyExperience } from '../lib/profileSchema'
 import { TextField, TextAreaField } from './Field'
 import MonthInput from './MonthInput'
+import { useIssue } from '../lib/formContext'
 
 export default function ExperienceEditor({ value, onChange }) {
+  const { need: needMsg } = useIssue('experience')
   const update = (id, patch) => onChange(value.map((e) => (e.id === id ? { ...e, ...patch } : e)))
   const remove = (id) => onChange(value.filter((e) => e.id !== id))
 
   return (
     <div>
       {value.length === 0 && <p className="note">Add your jobs, most recent first. Internships count too.</p>}
+      {needMsg && (
+        <p className="fneed" id="exp-need">
+          {needMsg}
+        </p>
+      )}
 
       {value.map((e, i) => (
         <div className="rcard" key={e.id} role="group" aria-label={`Job ${i + 1}`}>
@@ -24,6 +31,7 @@ export default function ExperienceEditor({ value, onChange }) {
           <div className="fgrid">
             <TextField
               label="Job title"
+              name={`exp.${e.id}.title`}
               required
               value={e.title}
               onChange={(v) => update(e.id, { title: v })}
@@ -31,6 +39,7 @@ export default function ExperienceEditor({ value, onChange }) {
             />
             <TextField
               label="Company"
+              name={`exp.${e.id}.company`}
               required
               value={e.company}
               onChange={(v) => update(e.id, { company: v })}
@@ -43,9 +52,10 @@ export default function ExperienceEditor({ value, onChange }) {
               onChange={(v) => update(e.id, { location: v })}
               maxLength={100}
             />
-            <MonthInput label="Start date" required value={e.start} onChange={(v) => update(e.id, { start: v })} />
+            <MonthInput label="Start date" name={`exp.${e.id}.start`} required value={e.start} onChange={(v) => update(e.id, { start: v })} />
             <MonthInput
               label="End date"
+              name={`exp.${e.id}.end`}
               required={!e.current}
               value={e.end}
               disabled={e.current}

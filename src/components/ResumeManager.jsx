@@ -21,7 +21,7 @@ async function looksRight(file, e) {
   return false
 }
 
-export default function ResumeManager({ onCount }) {
+export default function ResumeManager({ onCount, onAutofill, autofillBusy = false }) {
   const { user } = useAuth()
   const [items, setItems] = useState([])
   const [loading, setLoading] = useState(true)
@@ -76,7 +76,13 @@ export default function ResumeManager({ onCount }) {
     }
     await load()
     setBusy('')
-    setMsg({ type: 'ok', text: `Uploaded ${file.name}.` })
+    setMsg({
+      type: 'ok',
+      text:
+        e === 'doc'
+          ? `Uploaded ${file.name}. Autofill reads PDF and DOCX only, so fill your details by hand or upload a PDF.`
+          : `Uploaded ${file.name}. Now press "Fill my profile" below to save yourself the typing.`,
+    })
   }
 
   async function view(item) {
@@ -165,6 +171,14 @@ export default function ResumeManager({ onCount }) {
         )}
       </div>
 
+      {onAutofill && items.length > 0 && (
+        <p className="note">
+          <strong>Fill my profile</strong> sends that resume to Google's Gemini AI, which reads it and suggests your details.
+          You review every item before anything is added, and nothing is saved until you press Save changes. Works best with
+          PDF or DOCX.
+        </p>
+      )}
+
       {loading ? (
         <p className="muted">Loading…</p>
       ) : items.length === 0 ? (
@@ -180,7 +194,18 @@ export default function ResumeManager({ onCount }) {
                   {it.is_base && <span className="badge">Main resume</span>}
                 </span>
               </div>
-              <div className="row">
+              <div className="row wrap">
+                {onAutofill && (
+                  <button
+                    type="button"
+                    className={`btn small${it.is_base ? ' primary' : ''}`}
+                    onClick={() => onAutofill(it)}
+                    disabled={autofillBusy || busy === it.id || ext(it.name) === 'doc'}
+                    title={ext(it.name) === 'doc' ? 'Autofill reads PDF and DOCX files. Convert this one to PDF to use it.' : undefined}
+                  >
+                    Fill my profile
+                  </button>
+                )}
                 <button type="button" className="btn small" onClick={() => view(it)} disabled={busy === it.id}>
                   View
                 </button>
