@@ -4,15 +4,16 @@ import Auth from './pages/Auth'
 import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
+import Jobs from './pages/Jobs'
 import ConsentModal from './components/ConsentModal'
 
 export default function App() {
   const { session, profile, loading, recovery } = useAuth()
-  const [view, setView] = useState('dashboard') // dashboard | profile
+  const [view, setView] = useState('dashboard') // dashboard | profile | jobs
 
   // browser Back button returns from the profile page to the dashboard
   useEffect(() => {
-    const onPop = (e) => setView(e.state?.view === 'profile' ? 'profile' : 'dashboard')
+    const onPop = (e) => setView(e.state?.view === 'profile' || e.state?.view === 'jobs' ? e.state.view : 'dashboard')
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
@@ -22,12 +23,12 @@ export default function App() {
     if (!session) setView('dashboard')
   }, [session])
 
-  const openProfile = () => {
-    window.history.pushState({ view: 'profile' }, '')
-    setView('profile')
+  const open = (v) => {
+    window.history.pushState({ view: v }, '')
+    setView(v)
   }
-  const closeProfile = () => {
-    if (window.history.state?.view === 'profile') window.history.back()
+  const close = () => {
+    if (window.history.state?.view) window.history.back()
     else setView('dashboard')
   }
 
@@ -41,9 +42,11 @@ export default function App() {
   return (
     <>
       {view === 'profile' && profile ? (
-        <Profile onBack={closeProfile} />
+        <Profile onBack={close} />
+      ) : view === 'jobs' && profile ? (
+        <Jobs onBack={close} />
       ) : (
-        <Dashboard onOpenProfile={openProfile} />
+        <Dashboard onOpenProfile={() => open('profile')} onOpenJobs={() => open('jobs')} />
       )}
       {needsConsent && <ConsentModal />}
     </>

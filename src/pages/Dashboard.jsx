@@ -5,10 +5,11 @@ import { toForm, profileCompleteness } from '../lib/profileSchema'
 
 const DAYS = 7
 
-export default function Dashboard({ onOpenProfile }) {
+export default function Dashboard({ onOpenProfile, onOpenJobs }) {
   const { user, profile, refreshProfile, signOut } = useAuth()
   const [busy, setBusy] = useState(false)
   const [resumeCount, setResumeCount] = useState(0)
+  const [jobStats, setJobStats] = useState({ good: 0, total: 0 })
 
   useEffect(() => {
     if (!user) return
@@ -17,6 +18,15 @@ export default function Dashboard({ onOpenProfile }) {
       .select('id')
       .then(({ data }) => setResumeCount(data?.length ?? 0))
   }, [user])
+
+  useEffect(() => {
+    if (!user) return
+    supabase.from('rapidly_jobs').select('match_score,status').neq('status', 'hidden').then(({ data }) => {
+      const bar = Number(profile?.min_match_score ?? 70)
+      const rows = data || []
+      setJobStats({ total: rows.length, good: rows.filter((j) => (j.match_score ?? -1) >= bar).length })
+    })
+  }, [user, profile?.min_match_score])
 
   const { percent, missing } = profileCompleteness(toForm(profile || {}), resumeCount)
 
@@ -78,7 +88,13 @@ export default function Dashboard({ onOpenProfile }) {
             {percent < 100 ? 'Complete your profile' : 'Edit profile'}
           </button>
         </div>
-        <div className="card"><h3>Matched jobs</h3><p className="muted">Coming in a later step</p></div>
+        <div className="card">
+          <h3>Jobs</h3>
+          <p className="muted small">
+            {jobStats.total === 0 ? 'No jobs yet. Paste one and get a match score.' : `${jobStats.good} good match${jobStats.good === 1 ? '' : 'es'} out of ${jobStats.total}.`}
+          </p>
+          <button className="btn primary" onClick={onOpenJobs}>{jobStats.total === 0 ? 'Add your first job' : 'Open jobs'}</button>
+        </div>
         <div className="card"><h3>Applied</h3><p className="muted">Coming in a later step</p></div>
         <div className="card"><h3>Needs your action</h3><p className="muted">Coming in a later step</p></div>
         <div className="card"><h3>Agent activity</h3><p className="muted">Coming in a later step</p></div>

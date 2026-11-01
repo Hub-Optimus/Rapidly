@@ -227,3 +227,35 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
   padding: 5px 11px; font-size: 13px; cursor: pointer;
 }
 .suggest button:hover { border-color: var(--accent); background: #1b1e2c; }
+
+/* ---------- Step 10: jobs ---------- */
+.logo.small { font-size: 18px; }
+.notice { padding: 12px 14px; border-radius: 10px; margin: 0 0 16px; font-size: 14px; line-height: 1.45; border: 1px solid var(--border); }
+.notice.error { border-color: var(--danger); color: #ffb3b3; background: #2a1618; }
+.notice.ok { border-color: var(--ok); color: #aef0d2; background: #14261e; }
+.add-job { margin-bottom: 20px; }
+.add-job .field { margin-bottom: 14px; }
+.spinner.sm { display: inline-block; width: 14px; height: 14px; margin: 0 6px -2px 0; border-width: 2px; }
+.tab .count { margin-left: 4px; font-size: 12px; color: var(--muted); background: var(--card); border: 1px solid var(--border); border-radius: 10px; padding: 1px 7px; }
+.jobs { display: grid; gap: 14px; }
+.job { background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 16px 18px; }
+.job.good { border-left: 3px solid var(--ok); }
+.job.low { border-left: 3px solid #e8b64c; }
+.job-head { display: flex; gap: 14px; align-items: center; }
+.job-main { min-width: 0; }
+.job-main h3 { margin: 0 0 2px; font-size: 16px; word-break: break-word; }
+.job-main p { margin: 0; word-break: break-word; }
+.score { flex-shrink: 0; width: 56px; height: 56px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 800; font-size: 18px; border: 2px solid var(--border); }
+.score small { font-size: 11px; font-weight: 600; margin-left: 1px; }
+.score.good { border-color: var(--ok); color: var(--ok); }
+.score.low { border-color: #e8b64c; color: #e8b64c; }
+.job-reason { margin: 12px 0 0; font-size: 14px; line-height: 1.5; }
+.job-tags { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 10px; }
+.tag { font-size: 12.5px; padding: 3px 9px; border-radius: 999px; border: 1px solid var(--border); }
+.tag.ok { color: #aef0d2; border-color: #1f5c43; }
+.tag.gap { color: #ffb3b3; border-color: #6a2a2a; }
+.job-desc { margin: 12px 0 0; max-height: 260px; overflow: auto; white-space: pre-wrap; word-break: break-word; font-family: inherit; font-size: 13px; line-height: 1.5; color: var(--muted); background: var(--bg); border: 1px solid var(--border); border-radius: 10px; padding: 12px; }
+.job-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; align-items: center; }
+.job-actions select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
+.job-actions a.btn { text-decoration: none; display: inline-block; }
+.empty { text-align: center; padding: 32px 20px; }
