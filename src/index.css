@@ -273,3 +273,7 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .cand input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
 .cand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; word-break: break-word; }
 .found .notice { margin: 14px 0 0; }
+.found .more { margin: 12px 0; }
+.cands.plain { margin: 8px 0 0; gap: 4px; }
+.cands.plain li { font-size: 14px; word-break: break-word; }
+.cands.plain a { color: var(--accent); }

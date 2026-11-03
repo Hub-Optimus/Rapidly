@@ -14,6 +14,8 @@ export default function Companies({ onBack, onOpenJobs }) {
   const [busyId, setBusyId] = useState(null) // company being checked
   const [panel, setPanel] = useState(null) // { company, data, pick:Set(url), savedUrls }
   const [run, setRun] = useState(null) // { done, total, good, failed, stopped }
+  const [showOthers, setShowOthers] = useState(false)
+  const [showElsewhere, setShowElsewhere] = useState(false)
 
   const load = useCallback(async () => {
     const { data, error } = await supabase.from('rapidly_companies').select('*').order('created_at', { ascending: true })
@@ -48,7 +50,7 @@ export default function Companies({ onBack, onOpenJobs }) {
   }
 
   async function find(c) {
-    setMsg(null); setRun(null); setPanel(null); setBusyId(c.id)
+    setMsg(null); setRun(null); setPanel(null); setBusyId(c.id); setShowOthers(false); setShowElsewhere(false)
     try {
       const [data, saved] = await Promise.all([
         findRoles(supabase, c),
@@ -76,7 +78,7 @@ export default function Companies({ onBack, onOpenJobs }) {
   })
 
   async function scoreSelected() {
-    const chosen = panel.data.candidates.filter((c) => panel.pick.has(c.url))
+    const chosen = [...panel.data.candidates, ...(panel.data.others || [])].filter((c) => panel.pick.has(c.url))
     if (chosen.length === 0) return
     setMsg(null)
     const r = { done: 0, total: chosen.length, good: 0, failed: 0, skipped: 0, stopped: '' }
@@ -162,12 +164,34 @@ export default function Companies({ onBack, onOpenJobs }) {
                 <p className="small">
                   <strong>{panel.data.total}</strong> open roles · <strong>{panel.data.in_location}</strong> in your places · <strong>{panel.data.matched}</strong> look relevant to your target roles.
                 </p>
+                <p className="muted small">
+                  Looked for: {panel.data.searched?.roles?.length ? panel.data.searched.roles.join(', ') : 'no target roles set'}
+                  {' · '}Places: {panel.data.searched?.places?.length ? panel.data.searched.places.join(', ') : 'any'}
+                </p>
                 {panel.data.matched === 0 && (
                   <p className="muted small">
                     {panel.data.total === 0 ? 'This company has no open roles right now.'
-                      : panel.data.in_location === 0 ? 'No roles in your preferred locations. You can add more locations in Job preferences.'
-                      : 'No role titles match your target roles. You can add more roles in Job preferences.'}
+                      : panel.data.in_location === 0 ? 'No roles in your preferred places. See below, or add more places in Job preferences.'
+                      : 'No role titles match your target roles. See below, or add more roles in Job preferences.'}
                   </p>
+                )}
+                {panel.data.elsewhere_count > 0 && (
+                  <div className="more">
+                    <button type="button" className="linkbtn" aria-expanded={showElsewhere} onClick={() => setShowElsewhere(!showElsewhere)}>
+                      {showElsewhere ? 'Hide' : 'Show'} {panel.data.elsewhere_count} role{panel.data.elsewhere_count === 1 ? '' : 's'} that match your titles but are in other places
+                    </button>
+                    {showElsewhere && (
+                      <ul className="cands plain">
+                        {panel.data.elsewhere.map((r) => (
+                          <li key={r.url}>
+                            <a href={r.url} target="_blank" rel="noopener noreferrer">{r.title}</a>
+                            <span className="muted small"> · {r.location || 'place not stated'}</span>
+                          </li>
+                        ))}
+                        {panel.data.elsewhere_count > panel.data.elsewhere.length && <li className="muted small">…and {panel.data.elsewhere_count - panel.data.elsewhere.length} more</li>}
+                      </ul>
+                    )}
+                  </div>
                 )}
                 {candidates.length > 0 && (
                   <>
@@ -192,6 +216,39 @@ export default function Companies({ onBack, onOpenJobs }) {
                       {scoring ? <><span className="spinner sm" aria-hidden="true" /> Scoring {run.done + 1} of {run.total}…</> : `Score ${panel.pick.size} selected`}
                     </button>
                   </>
+                )}
+                {(panel.data.others || []).length > 0 && (
+                  <div className="more">
+                    <button type="button" className="linkbtn" aria-expanded={showOthers} onClick={() => setShowOthers(!showOthers)}>
+                      {showOthers ? 'Hide' : 'Show'} the {panel.data.others.length}{panel.data.in_location - panel.data.matched > panel.data.others.length ? ' best' : ''} other role{panel.data.others.length === 1 ? '' : 's'} in your places (titles that did not match)
+                    </button>
+                    {showOthers && (
+                      <>
+                        <p className="muted small">You can still tick any of these and score them. The AI will judge the fit.</p>
+                        <ul className="cands">
+                          {panel.data.others.map((r) => {
+                            const saved = panel.savedUrls.includes(r.url)
+                            return (
+                              <li key={r.url}>
+                                <label className={saved ? 'cand saved' : 'cand'}>
+                                  <input type="checkbox" disabled={saved || scoring} checked={panel.pick.has(r.url)} onChange={() => togglePick(r.url)} />
+                                  <span className="cand-text">
+                                    <span>{r.title}</span>
+                                    <span className="muted small">{[r.location, saved ? 'already in your Jobs list' : ''].filter(Boolean).join(' · ')}</span>
+                                  </span>
+                                </label>
+                              </li>
+                            )
+                          })}
+                        </ul>
+                        {candidates.length === 0 && (
+                          <button className="btn primary" onClick={scoreSelected} disabled={scoring || panel.pick.size === 0}>
+                            {scoring ? <><span className="spinner sm" aria-hidden="true" /> Scoring {run.done + 1} of {run.total}…</> : `Score ${panel.pick.size} selected`}
+                          </button>
+                        )}
+                      </>
+                    )}
+                  </div>
                 )}
                 {run && (run.finished || run.stopped) && (
                   <div className={`notice ${run.stopped ? 'error' : 'ok'}`} role="status">
