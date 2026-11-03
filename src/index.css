@@ -259,3 +259,17 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .job-actions select { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 10px; padding: 6px 10px; font-size: 13px; }
 .job-actions a.btn { text-decoration: none; display: inline-block; }
 .empty { text-align: center; padding: 32px 20px; }
+
+/* ---------- Step 10c: company pages ---------- */
+.chips-row { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 8px; }
+.chip-btn { background: var(--bg); color: var(--text); border: 1px solid var(--border); border-radius: 999px; padding: 6px 12px; font-size: 13px; cursor: pointer; }
+.chip-btn:hover { border-color: var(--accent); }
+.form .suggest { margin-top: 16px; }
+.card.co h3 { margin: 0 0 2px; }
+.found { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--border); }
+.cands { list-style: none; margin: 10px 0 14px; padding: 0; display: grid; gap: 6px; }
+.cand { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--border); border-radius: 10px; cursor: pointer; }
+.cand.saved { opacity: 0.55; cursor: default; }
+.cand input { width: 18px; height: 18px; margin-top: 2px; accent-color: var(--accent); flex-shrink: 0; }
+.cand-text { display: flex; flex-direction: column; gap: 2px; min-width: 0; word-break: break-word; }
+.found .notice { margin: 14px 0 0; }

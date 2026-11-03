@@ -48,7 +48,7 @@ function JobCard({ job, bar, busy, onStatus, onRescore, onDelete }) {
   )
 }
 
-export default function Jobs({ onBack }) {
+export default function Jobs({ onBack, onOpenCompanies }) {
   const { user, profile } = useAuth()
   const bar = Number(profile?.min_match_score ?? 70)
   const [jobs, setJobs] = useState(null)
@@ -141,9 +141,12 @@ export default function Jobs({ onBack }) {
           <button className="btn" onClick={onBack}>← Dashboard</button>
           <h1 className="logo small">Jobs</h1>
         </div>
-        <button className="btn primary" onClick={() => setShowAdd(!showAdd)} aria-expanded={showAdd}>
-          {showAdd ? 'Close' : '+ Add a job'}
-        </button>
+        <div className="row wrap">
+          <button className="btn" onClick={onOpenCompanies}>Company pages</button>
+          <button className="btn primary" onClick={() => setShowAdd(!showAdd)} aria-expanded={showAdd}>
+            {showAdd ? 'Close' : '+ Add a job'}
+          </button>
+        </div>
       </header>
 
       {msg && <div className={`notice ${msg.type}`} role={msg.type === 'error' ? 'alert' : 'status'}>{msg.text}</div>}

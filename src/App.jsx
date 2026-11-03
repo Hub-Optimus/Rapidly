@@ -5,15 +5,16 @@ import ResetPassword from './pages/ResetPassword'
 import Dashboard from './pages/Dashboard'
 import Profile from './pages/Profile'
 import Jobs from './pages/Jobs'
+import Companies from './pages/Companies'
 import ConsentModal from './components/ConsentModal'
 
 export default function App() {
   const { session, profile, loading, recovery } = useAuth()
-  const [view, setView] = useState('dashboard') // dashboard | profile | jobs
+  const [view, setView] = useState('dashboard') // dashboard | profile | jobs | companies
 
   // browser Back button returns from the profile page to the dashboard
   useEffect(() => {
-    const onPop = (e) => setView(e.state?.view === 'profile' || e.state?.view === 'jobs' ? e.state.view : 'dashboard')
+    const onPop = (e) => setView(['profile', 'jobs', 'companies'].includes(e.state?.view) ? e.state.view : 'dashboard')
     window.addEventListener('popstate', onPop)
     return () => window.removeEventListener('popstate', onPop)
   }, [])
@@ -44,7 +45,9 @@ export default function App() {
       {view === 'profile' && profile ? (
         <Profile onBack={close} />
       ) : view === 'jobs' && profile ? (
-        <Jobs onBack={close} />
+        <Jobs onBack={close} onOpenCompanies={() => open('companies')} />
+      ) : view === 'companies' && profile ? (
+        <Companies onBack={close} onOpenJobs={() => { window.history.go(-1) }} />
       ) : (
         <Dashboard onOpenProfile={() => open('profile')} onOpenJobs={() => open('jobs')} />
       )}
