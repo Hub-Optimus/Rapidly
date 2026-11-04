@@ -277,3 +277,11 @@ button:focus-visible, input:focus-visible { outline: 2px solid var(--accent); ou
 .cands.plain { margin: 8px 0 0; gap: 4px; }
 .cands.plain li { font-size: 14px; word-break: break-word; }
 .cands.plain a { color: var(--accent); }
+
+/* Autopilot switch */
+.switch { width: 46px; height: 26px; border-radius: 13px; border: 1px solid var(--border); background: var(--border); padding: 2px; cursor: pointer; position: relative; flex: none; }
+.switch span { display: block; width: 20px; height: 20px; border-radius: 50%; background: #fff; transition: transform .15s; }
+.switch.on { background: var(--accent); border-color: var(--accent); }
+.switch.on span { transform: translateX(20px); }
+.switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) { .switch span { transition: none; } }

@@ -1,18 +1,8 @@
 // Company career pages: helpers for the Companies page.
 export const ATS_LABEL = { greenhouse: 'Greenhouse', lever: 'Lever', ashby: 'Ashby' }
 
-// Companies to try with one tap. Not every company keeps a public board, so each is checked when you press Find roles.
-export const STARTERS = [
-  { name: 'Razorpay', ats: 'greenhouse', board: 'razorpay' },
-  { name: 'Postman', ats: 'greenhouse', board: 'postman' },
-  { name: 'Stripe', ats: 'greenhouse', board: 'stripe' },
-  { name: 'Databricks', ats: 'greenhouse', board: 'databricks' },
-  { name: 'Cloudflare', ats: 'greenhouse', board: 'cloudflare' },
-  { name: 'Anthropic', ats: 'greenhouse', board: 'anthropic' },
-  { name: 'CRED', ats: 'lever', board: 'cred' },
-  { name: 'Notion', ats: 'ashby', board: 'notion' },
-  { name: 'OpenAI', ats: 'ashby', board: 'openai' },
-]
+// Rapidly now watches a built-in list of companies by itself (see rapidly_company_directory), so there are no one-tap suggestions here any more.
+export const STARTERS = []
 
 const BOARD_RE = /^[a-z0-9][a-z0-9_-]{0,60}$/
 const titleCase = (s) => s.replace(/[-_]+/g, ' ').replace(/\b\w/g, (c) => c.toUpperCase())

@@ -1,7 +1,8 @@
-import { useEffect, useState } from 'react'
+import { useCallback, useEffect, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toForm, profileCompleteness } from '../lib/profileSchema'
+import { runAutopilot, lastRunText } from '../lib/autopilot'
 
 const DAYS = 7
 
@@ -10,6 +11,7 @@ export default function Dashboard({ onOpenProfile, onOpenJobs }) {
   const [busy, setBusy] = useState(false)
   const [resumeCount, setResumeCount] = useState(0)
   const [jobStats, setJobStats] = useState({ good: 0, total: 0 })
+  const [ap, setAp] = useState({ running: false, error: '', summary: '' })
 
   useEffect(() => {
     if (!user) return
@@ -19,14 +21,36 @@ export default function Dashboard({ onOpenProfile, onOpenJobs }) {
       .then(({ data }) => setResumeCount(data?.length ?? 0))
   }, [user])
 
-  useEffect(() => {
-    if (!user) return
+  const loadJobStats = useCallback(() => {
     supabase.from('rapidly_jobs').select('match_score,status').neq('status', 'hidden').then(({ data }) => {
       const bar = Number(profile?.min_match_score ?? 70)
       const rows = data || []
       setJobStats({ total: rows.length, good: rows.filter((j) => (j.match_score ?? -1) >= bar).length })
     })
-  }, [user, profile?.min_match_score])
+  }, [profile?.min_match_score])
+
+  useEffect(() => {
+    if (user) loadJobStats()
+  }, [user, loadJobStats])
+
+  async function toggleAutopilot() {
+    setAp((a) => ({ ...a, error: '' }))
+    const { error } = await supabase.from('rapidly_profiles').update({ autopilot_enabled: !profile?.autopilot_enabled }).eq('id', user.id)
+    if (error) setAp((a) => ({ ...a, error: 'Could not save that. Please try again.' }))
+    await refreshProfile()
+  }
+
+  async function runNow() {
+    setAp({ running: true, error: '', summary: '' })
+    try {
+      const r = await runAutopilot(supabase)
+      setAp({ running: false, error: '', summary: r.summary || '' })
+    } catch (e) {
+      setAp({ running: false, error: e.message, summary: '' })
+    }
+    await refreshProfile()
+    loadJobStats()
+  }
 
   const { percent, missing } = profileCompleteness(toForm(profile || {}), resumeCount)
 
@@ -87,6 +111,20 @@ export default function Dashboard({ onOpenProfile, onOpenJobs }) {
           <button className="btn primary" onClick={onOpenProfile}>
             {percent < 100 ? 'Complete your profile' : 'Edit profile'}
           </button>
+        </div>
+        <div className="card wide" aria-busy={ap.running}>
+          <div className="row spread">
+            <h3>Autopilot</h3>
+            <button type="button" role="switch" aria-checked={!!profile?.autopilot_enabled} aria-label="Autopilot daily check"
+              className={`switch ${profile?.autopilot_enabled ? 'on' : ''}`} onClick={toggleAutopilot}><span /></button>
+          </div>
+          <p className="muted small">Every day Rapidly checks public company job pages (its built-in list plus yours) and scores new roles that fit your titles and places using AI. It does not apply to anything.</p>
+          {profile?.autopilot_last_summary && !ap.summary && (
+            <p className="small" data-testid="ap-last">{profile.autopilot_last_summary} <span className="muted">({lastRunText(profile.autopilot_last_run_at)})</span></p>
+          )}
+          {ap.summary && <p className="small" role="status" data-testid="ap-summary">{ap.summary}</p>}
+          {ap.error && <p className="ferr" role="alert">{ap.error}</p>}
+          <button className="btn primary" onClick={runNow} disabled={ap.running}>{ap.running ? 'Checking company pages… this can take up to 2 minutes' : 'Run now'}</button>
         </div>
         <div className="card">
           <h3>Jobs</h3>

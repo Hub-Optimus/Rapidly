@@ -8,6 +8,7 @@ export default function Companies({ onBack, onOpenJobs }) {
   const { user, profile } = useAuth()
   const bar = Number(profile?.min_match_score ?? 70)
   const [list, setList] = useState(null)
+  const [dirCount, setDirCount] = useState(null)
   const [input, setInput] = useState('')
   const [inputErr, setInputErr] = useState('')
   const [msg, setMsg] = useState(null)
@@ -100,6 +101,10 @@ export default function Companies({ onBack, onOpenJobs }) {
     setPanel((p) => ({ ...p, pick: new Set() }))
   }
 
+  useEffect(() => {
+    supabase.from('rapidly_company_directory').select('id', { count: 'exact', head: true }).eq('dead', false).then(({ count }) => setDirCount(count ?? null))
+  }, [])
+
   const candidates = panel?.data.candidates || []
   const scoring = !!run && !run.finished && !run.stopped
   const starters = useMemo(() => STARTERS.filter((s) => !isDuplicate(list || [], s)), [list])
@@ -114,6 +119,13 @@ export default function Companies({ onBack, onOpenJobs }) {
       </header>
 
       {msg && <div className={`notice ${msg.type}`} role={msg.type === 'error' ? 'alert' : 'status'}>{msg.text}</div>}
+
+      {dirCount > 0 && (
+        <div className="card" data-testid="dir-note">
+          <h3>Rapidly already watches {dirCount} companies for you</h3>
+          <p className="muted small">These are companies hiring in India. Turn on Autopilot on the home screen and Rapidly checks them every day. Add a company below only if you want one that is not covered.</p>
+        </div>
+      )}
 
       <form className="card form" onSubmit={addFromInput} noValidate>
         <h3>Add a company</h3>
