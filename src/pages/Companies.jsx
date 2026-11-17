@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from 'react'
 import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
-import { ATS_LABEL, STARTERS, agoText, findRoles, isDuplicate, parseCompanyInput, pickToScore } from '../lib/careers'
+import { ATS_LABEL, STARTERS, agoText, detectCompany, findRoles, isDuplicate, looksLikeLink, parseCompanyInput, pickToScore } from '../lib/careers'
 import { scoreJob } from '../lib/jobs'
 
 export default function Companies({ onBack, onOpenJobs }) {
@@ -11,6 +11,8 @@ export default function Companies({ onBack, onOpenJobs }) {
   const [dirCount, setDirCount] = useState(null)
   const [input, setInput] = useState('')
   const [inputErr, setInputErr] = useState('')
+  const [finding, setFinding] = useState(false)
+  const [found, setFound] = useState(null) // { name, items } after a name lookup
   const [msg, setMsg] = useState(null)
   const [busyId, setBusyId] = useState(null) // company being checked
   const [panel, setPanel] = useState(null) // { company, data, pick:Set(url), savedUrls }
@@ -36,10 +38,29 @@ export default function Companies({ onBack, onOpenJobs }) {
 
   async function addFromInput(e) {
     e.preventDefault()
-    const r = parseCompanyInput(input)
-    if (!r.ok) { setInputErr(r.message); return }
-    setInputErr('')
-    if (await addCompany(r)) setInput('')
+    setFound(null)
+    const text = input.trim()
+    if (!text) { setInputErr('Type a company name or paste its careers link.'); return }
+    if (looksLikeLink(text)) {
+      const r = parseCompanyInput(text)
+      if (!r.ok) { setInputErr(r.message); return }
+      setInputErr('')
+      if (await addCompany(r)) setInput('')
+      return
+    }
+    setInputErr(''); setFinding(true)
+    try {
+      const items = await detectCompany(supabase, text)
+      if (items.length === 0) setInputErr('I could not find a public job list for that name. Open the company careers page, click any job, and paste that address here.')
+      else setFound({ name: text.replace(/\b\w/g, (c) => c.toUpperCase()), items })
+    } catch (err) {
+      setInputErr(err.message)
+    }
+    setFinding(false)
+  }
+
+  async function addFound(it) {
+    if (await addCompany({ name: found.name, ats: it.ats, board: it.board })) { setFound(null); setInput('') }
   }
 
   async function removeCompany(c) {
@@ -129,14 +150,25 @@ export default function Companies({ onBack, onOpenJobs }) {
 
       <form className="card form" onSubmit={addFromInput} noValidate>
         <h3>Add a company</h3>
-        <p className="muted small">Open the company's careers page, click any job, and paste the address here. Works for Greenhouse, Lever and Ashby job pages (the address starts with boards.greenhouse.io, jobs.lever.co or jobs.ashbyhq.com).</p>
+        <p className="muted small">Type the company name and Rapidly looks for its job list. Or paste any careers link (Greenhouse, Lever, Ashby and Workday job pages work).</p>
         <div className="field">
-          <label htmlFor="co-url">Careers link</label>
-          <input id="co-url" value={input} onChange={(e) => { setInput(e.target.value); setInputErr('') }}
-            aria-invalid={!!inputErr} aria-describedby={inputErr ? 'co-err' : undefined} placeholder="https://jobs.lever.co/cred" />
+          <label htmlFor="co-url">Company name or careers link</label>
+          <input id="co-url" value={input} onChange={(e) => { setInput(e.target.value); setInputErr(''); setFound(null) }}
+            aria-invalid={!!inputErr} aria-describedby={inputErr ? 'co-err' : undefined} placeholder="Meesho, or https://jobs.lever.co/cred" />
           {inputErr && <p className="ferr" id="co-err" role="alert">{inputErr}</p>}
         </div>
-        <button className="btn primary" type="submit">Add company</button>
+        <button className="btn primary" type="submit" disabled={finding}>{finding ? 'Looking…' : 'Add company'}</button>
+        {found && (
+          <div className="suggest" data-testid="found" style={{ display: "block" }}>
+            <span className="small muted">Found these. Pick the right one (names can clash):</span>
+            {found.items.map((it) => (
+              <div className="row spread wrap" key={`${it.ats}:${it.board}`} style={{ marginTop: 8 }}>
+                <span className="small">{ATS_LABEL[it.ats]} · {it.total} roles{it.sample ? ` · e.g. ${it.sample}` : ''}</span>
+                <button type="button" className="btn" onClick={() => addFound(it)}>Add this</button>
+              </div>
+            ))}
+          </div>
+        )}
         {starters.length > 0 && (
           <div className="suggest">
             <span className="small muted">Or try one of these (not every company keeps a public job list, so Rapidly tells you when it cannot find one):</span>
