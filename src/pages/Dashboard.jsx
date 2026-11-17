@@ -3,6 +3,7 @@ import { supabase } from '../lib/supabase'
 import { useAuth } from '../context/AuthContext'
 import { toForm, profileCompleteness } from '../lib/profileSchema'
 import { runAutopilot, lastRunText } from '../lib/autopilot'
+import { disconnectGmail, gmailResultFromUrl, startGmail } from '../lib/gmail'
 
 const DAYS = 7
 
@@ -12,6 +13,36 @@ export default function Dashboard({ onOpenProfile, onOpenJobs }) {
   const [resumeCount, setResumeCount] = useState(0)
   const [jobStats, setJobStats] = useState({ good: 0, total: 0 })
   const [ap, setAp] = useState({ running: false, error: '', summary: '' })
+  const [gm, setGm] = useState({ busy: false, error: '', result: gmailResultFromUrl(window.location.search) })
+
+  // after Google sends the user back, show the result once and tidy the address bar
+  useEffect(() => {
+    if (new URLSearchParams(window.location.search).has('gmail')) {
+      window.history.replaceState({}, '', window.location.pathname)
+      refreshProfile()
+    }
+  }, [])
+
+  async function connectGmail() {
+    setGm({ busy: true, error: '', result: null })
+    try {
+      window.location.href = await startGmail(supabase)
+    } catch (e) {
+      setGm({ busy: false, error: e.message, result: null })
+    }
+  }
+
+  async function removeGmail() {
+    if (!window.confirm('Disconnect Gmail? Rapidly stops reading your email and forgets the permission. Jobs already saved stay.')) return
+    setGm({ busy: true, error: '', result: null })
+    try {
+      await disconnectGmail(supabase)
+      setGm({ busy: false, error: '', result: null })
+    } catch (e) {
+      setGm({ busy: false, error: e.message, result: null })
+    }
+    await refreshProfile()
+  }
 
   useEffect(() => {
     if (!user) return
@@ -125,6 +156,23 @@ export default function Dashboard({ onOpenProfile, onOpenJobs }) {
           {ap.summary && <p className="small" role="status" data-testid="ap-summary">{ap.summary}</p>}
           {ap.error && <p className="ferr" role="alert">{ap.error}</p>}
           <button className="btn primary" onClick={runNow} disabled={ap.running}>{ap.running ? 'Checking company pages… this can take up to 2 minutes' : 'Run now'}</button>
+        </div>
+        <div className="card wide" aria-busy={gm.busy}>
+          <h3>Gmail job alerts</h3>
+          {gm.result && <p className={gm.result.type === 'error' ? 'ferr' : 'small'} role={gm.result.type === 'error' ? 'alert' : 'status'} data-testid="gm-result">{gm.result.text}</p>}
+          {profile?.gmail_email ? (
+            <>
+              <p className="small">Connected: <strong>{profile.gmail_email}</strong> (read-only).</p>
+              <p className="muted small">Next update: Rapidly will read job-alert emails from LinkedIn, Naukri and Indeed and score the jobs in them. It cannot send, delete or change any email.</p>
+              <button className="btn" onClick={removeGmail} disabled={gm.busy}>Disconnect Gmail</button>
+            </>
+          ) : (
+            <>
+              <p className="muted small">Connect your Application email so Rapidly can read job-alert emails from LinkedIn, Naukri and Indeed. Read-only: it cannot send, delete or change email, and you can disconnect any time. Only your Application email can be connected.</p>
+              {gm.error && <p className="ferr" role="alert">{gm.error}</p>}
+              <button className="btn primary" onClick={connectGmail} disabled={gm.busy}>{gm.busy ? 'Opening Google…' : 'Connect Gmail'}</button>
+            </>
+          )}
         </div>
         <div className="card">
           <h3>Jobs</h3>
